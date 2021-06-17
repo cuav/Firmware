@@ -64,7 +64,7 @@ UavcanNode::UavcanNode(CanardInterface *interface, uint32_t node_id) :
 	uavcan_allocator = o1heapInit(_uavcan_heap, HeapSize, nullptr, nullptr);
 
 	if (uavcan_allocator == nullptr) {
-		PX4_ERR("o1heapInit failed with size %d", HeapSize);
+		PX4_ERR("o1heapInit failed with size %u", HeapSize);
 	}
 
 	_canard_instance = canardInit(&memAllocate, &memFree);
@@ -228,7 +228,7 @@ void UavcanNode::Run()
 			// It is possible to statically prove that an out-of-memory will never occur for a given application if
 			// the heap is sized correctly; for background, refer to the Robson's Proof and the documentation for O1Heap.
 			// Reception of an invalid frame is NOT an error.
-			PX4_ERR("Receive error %d\n", result);
+			PX4_ERR("Receive error %" PRId32" \n", result);
 
 		} else if (result == 1) {
 			// A transfer has been received, process it.
@@ -271,7 +271,7 @@ void UavcanNode::transmit()
 	for (const CanardFrame *txf = nullptr; (txf = canardTxPeek(&_canard_instance)) != nullptr;) {
 		// Attempt transmission only if the frame is not yet timed out while waiting in the TX queue.
 		// Otherwise just drop it and move on to the next one.
-		if (txf->timestamp_usec == 0 || hrt_absolute_time() > txf->timestamp_usec) {
+		if (txf->timestamp_usec == 0 || txf->timestamp_usec > hrt_absolute_time()) {
 			// Send the frame. Redundant interfaces may be used here.
 			const int tx_res = _can_interface->transmit(*txf);
 
@@ -389,7 +389,7 @@ extern "C" __EXPORT int uavcan_v1_main(int argc, char *argv[])
 		param_get(param_find("UAVCAN_V1_ID"), &node_id);
 
 		// Start
-		PX4_INFO("Node ID %u, bitrate %u", node_id, bitrate);
+		PX4_INFO("Node ID %" PRIu32 ", bitrate %" PRIu32, node_id, bitrate);
 		return UavcanNode::start(node_id, bitrate);
 	}
 
@@ -423,10 +423,10 @@ void UavcanNode::sendHeartbeat()
 		heartbeat.uptime = _uavcan_node_heartbeat_transfer_id; // TODO: use real uptime
 		heartbeat.health.value = uavcan_node_Health_1_0_NOMINAL;
 		heartbeat.mode.value = uavcan_node_Mode_1_0_OPERATIONAL;
-
+		const hrt_abstime now = hrt_absolute_time();
 
 		CanardTransfer transfer = {
-			.timestamp_usec = hrt_absolute_time() + PUBLISHER_DEFAULT_TIMEOUT_USEC,
+			.timestamp_usec = now + PUBLISHER_DEFAULT_TIMEOUT_USEC,
 			.priority       = CanardPriorityNominal,
 			.transfer_kind  = CanardTransferKindMessage,
 			.port_id        = uavcan_node_Heartbeat_1_0_FIXED_PORT_ID_,
@@ -444,10 +444,10 @@ void UavcanNode::sendHeartbeat()
 			// An error has occurred: either an argument is invalid or we've ran out of memory.
 			// It is possible to statically prove that an out-of-memory will never occur for a given application if the
 			// heap is sized correctly; for background, refer to the Robson's Proof and the documentation for O1Heap.
-			PX4_ERR("Heartbeat transmit error %d", result);
+			PX4_ERR("Heartbeat transmit error %" PRId32 "", result);
 		}
 
-		_uavcan_node_heartbeat_last = transfer.timestamp_usec;
+		_uavcan_node_heartbeat_last = now;
 	}
 }
 
